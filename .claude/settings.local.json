@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(gh auth *)",
+      "Bash(gh --version)",
+      "Bash(git init *)",
+      "Bash(git checkout *)",
+      "Bash(git add *)",
+      "Bash(git commit -m 'Initial commit: README and .gitignore *)",
+      "Bash(gh repo *)",
+      "Bash(chmod +x /home/nikhil/code/aistudio/luanti-client/install.sh)",
+      "Bash(chmod +x /home/nikhil/code/aistudio/python-code/tests/demo.py)",
+      "Bash(chmod +x /home/nikhil/code/aistudio/launch.sh)"
+    ]
+  }
+}
