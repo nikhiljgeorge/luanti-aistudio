@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+.pytest_cache/
+
+# Luanti world data (large binary files — keep out of git)
+luanti-voxelibre/data/
+luanti-voxelibre/worlds/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# Docker
+*.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
