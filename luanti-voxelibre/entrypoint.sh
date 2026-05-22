@@ -1,36 +1,55 @@
 #!/bin/sh
 # ─────────────────────────────────────────────────────────────────────────────
-# entrypoint.sh — First-run init + Luanti server launcher
+# entrypoint.sh — Luanti AI Studio server init
 #
-# On first start (empty volume) this copies the baked-in defaults into /config.
-# On subsequent starts it skips the copy and goes straight to the server.
+# Design rules (no more docker cp hacks):
+#   • minetest.conf   → ALWAYS overwritten from the image on every start.
+#                        Edit it in the repo; rebuild to apply.
+#   • world.mt        → Written once (new world bootstrap only).
+#   • VoxeLibre game  → Copied once (large; doesn't change between runs).
+#   • miney mod       → Copied once (same reason).
+#   • worlds/ data    → Never touched (player DB, map — persistent).
 # ─────────────────────────────────────────────────────────────────────────────
 set -e
 
-CONFIG_DIR="/config/.minetest"
+CFG="/config/.minetest"
 
-echo "[entrypoint] Luanti AI Studio — starting up"
+echo "[entrypoint] ── Luanti AI Studio ─────────────────────────────"
 
-# ── First-run: copy defaults into the persistent volume ──────────────────────
-if [ ! -d "$CONFIG_DIR/games/voxelibre" ]; then
-    echo "[entrypoint] First run — initialising world from defaults..."
-    mkdir -p "$CONFIG_DIR/games" \
-             "$CONFIG_DIR/mods" \
-             "$CONFIG_DIR/worlds/world"
+# ── Ensure directory tree exists ─────────────────────────────────────────────
+mkdir -p "$CFG/games" "$CFG/mods" "$CFG/worlds/world"
 
-    cp -r /defaults/.minetest/games/voxelibre  "$CONFIG_DIR/games/"
-    cp -r /defaults/.minetest/mods/miney       "$CONFIG_DIR/mods/"
-    cp    /defaults/.minetest/minetest.conf    "$CONFIG_DIR/"
-    cp    /defaults/.minetest/worlds/world/world.mt \
-                                               "$CONFIG_DIR/worlds/world/"
-
-    echo "[entrypoint] World initialised."
+# ── VoxeLibre: install once ───────────────────────────────────────────────────
+if [ ! -d "$CFG/games/voxelibre" ]; then
+    echo "[entrypoint] First run — installing VoxeLibre..."
+    cp -r /defaults/.minetest/games/voxelibre "$CFG/games/"
+    echo "[entrypoint] VoxeLibre installed."
 else
-    echo "[entrypoint] Existing world found — skipping first-run copy."
+    echo "[entrypoint] VoxeLibre already present — skipping."
 fi
 
-echo "[entrypoint] Launching Luanti server (VoxeLibre + miney)..."
+# ── miney mod: install once ───────────────────────────────────────────────────
+if [ ! -d "$CFG/mods/miney" ]; then
+    echo "[entrypoint] First run — installing miney mod..."
+    cp -r /defaults/.minetest/mods/miney "$CFG/mods/"
+    echo "[entrypoint] miney installed."
+else
+    echo "[entrypoint] miney mod already present — skipping."
+fi
+
+# ── world.mt: bootstrap once (preserves existing world data) ─────────────────
+if [ ! -f "$CFG/worlds/world/world.mt" ]; then
+    echo "[entrypoint] Creating world bootstrap..."
+    cp /defaults/.minetest/worlds/world/world.mt "$CFG/worlds/world/"
+fi
+
+# ── minetest.conf: ALWAYS apply from image ───────────────────────────────────
+# This is the source of truth. Edit in the repo → rebuild → auto-applied.
+echo "[entrypoint] Applying minetest.conf from image (always up to date)..."
+cp /defaults/.minetest/minetest.conf "$CFG/minetest.conf"
+
+echo "[entrypoint] ── Launching server ──────────────────────────────"
 exec /usr/bin/luantiserver \
     --gameid    voxelibre \
     --worldname world \
-    --config    "$CONFIG_DIR/minetest.conf"
+    --config    "$CFG/minetest.conf"
