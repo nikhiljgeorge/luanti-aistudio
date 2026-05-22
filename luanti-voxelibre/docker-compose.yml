@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   luanti:
     build:
@@ -8,24 +6,17 @@ services:
     image: luanti-voxelibre:local
     container_name: luanti-voxelibre
     restart: unless-stopped
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=America/New_York
-      # Game ID and world are passed as CLI args to the server binary
-      - CLI_ARGS=--gameid voxelibre --worldname world
     ports:
-      - "30000:30000/udp"   # Game server — players and Python bot connect here
+      - "30000:30000/udp"   # Game port — Luanti clients AND Python bot connect here
     volumes:
-      - luanti_world:/config/.minetest/worlds   # Persist the world between restarts
+      - luanti_data:/config  # Entire /config persists (games, mods, worlds, config)
     healthcheck:
-      # The server logs "Luanti server startup complete" when ready
       test: ["CMD-SHELL", "grep -q 'startup complete' /config/.minetest/debug.txt 2>/dev/null || exit 1"]
       interval: 5s
       timeout: 3s
-      retries: 20
-      start_period: 15s
+      retries: 30
+      start_period: 30s
 
 volumes:
-  luanti_world:
+  luanti_data:
     driver: local

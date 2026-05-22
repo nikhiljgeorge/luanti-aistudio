@@ -11,7 +11,9 @@
       "Bash(gh repo *)",
       "Bash(chmod +x /home/nikhil/code/aistudio/luanti-client/install.sh)",
       "Bash(chmod +x /home/nikhil/code/aistudio/python-code/tests/demo.py)",
-      "Bash(chmod +x /home/nikhil/code/aistudio/launch.sh)"
+      "Bash(chmod +x /home/nikhil/code/aistudio/launch.sh)",
+      "Bash(git push *)",
+      "Bash(bash luanti-client/install.sh)"
     ]
   }
 }

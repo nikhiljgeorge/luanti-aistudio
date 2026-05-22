@@ -2,21 +2,22 @@
 """
 demo.py — Luanti + VoxeLibre Python Showcase
 ═════════════════════════════════════════════
-Connects to the local Luanti server as 'pybot' and runs a series of
+Connects to the local Luanti server as an invisible bot and runs a series of
 visually impressive demos you can watch live in the Luanti client.
 
-Run from the repo root via launch.sh, or directly:
-    pip install miney
+Run from the repo root:
     python python-code/tests/demo.py [--host HOST] [--port PORT]
 
+Or via the one-shot launcher:
+    ./launch.sh
+
 Demos (in order):
-  1. Greeting     — Chat announcement + clear the stage
-  2. Rainbow Road — A flat strip of coloured wool stretching into the distance
-  3. Spiral Tower — A rising spiral of coloured glass blocks
+  1. Greeting     — Chat announcement
+  2. Rainbow Road — Flat strip of coloured wool stretching into the distance
+  3. Spiral Tower — Rising spiral of coloured glass blocks
   4. Checkerboard — 16×16 floor of alternating stone and gold
-  5. Fireworks    — TNT bursts lit in sequence (light show)
-  6. Countdown    — Signs placed in the air counting 3…2…1…GO
-  7. Sign-off     — Clean farewell message in chat
+  5. Fireworks    — TNT charges ignited in sequence
+  6. Sign-off     — Farewell chat message
 """
 
 import argparse
@@ -31,7 +32,7 @@ except ImportError:
     print("❌  miney is not installed.  Run:  pip install miney")
     sys.exit(1)
 
-# ── Block palettes ─────────────────────────────────────────────────────────────
+# ── VoxeLibre block palettes ───────────────────────────────────────────────────
 RAINBOW = [
     "mcl_wool:red",
     "mcl_wool:orange",
@@ -44,270 +45,229 @@ RAINBOW = [
 ]
 
 GLASS_COLOURS = [
-    "mcl_core:glass",
-    "mcl_stained_glass:red",
-    "mcl_stained_glass:orange",
-    "mcl_stained_glass:yellow",
-    "mcl_stained_glass:lime",
-    "mcl_stained_glass:cyan",
-    "mcl_stained_glass:light_blue",
-    "mcl_stained_glass:magenta",
+    "mcl_core:glass",           # clear
+    "mcl_core:glass_red",
+    "mcl_core:glass_orange",
+    "mcl_core:glass_yellow",
+    "mcl_core:glass_lime",
+    "mcl_core:glass_cyan",
+    "mcl_core:glass_light_blue",
+    "mcl_core:glass_magenta",
 ]
 
-AIR   = "air"
 STONE = "mcl_core:stone"
 GOLD  = "mcl_core:goldblock"
 PLANK = "mcl_core:wood"
 TNT   = "mcl_tnt:tnt"
+AIR   = "air"
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Lua helpers ───────────────────────────────────────────────────────────────
 
-def pos(x, y, z) -> dict:
-    """Return a position dict."""
-    return {"x": x, "y": y, "z": z}
-
-
-def place(mt: miney.Minetest, x: int, y: int, z: int, node: str) -> None:
-    """Place a single node via Lua so it works even without full miney node API."""
-    mt.lua.run(
-        f'minetest.set_node({{x={x}, y={y}, z={z}}}, {{name="{node}"}})'
-    )
+def lua_place(mt: miney.Luanti, x: int, y: int, z: int, node: str) -> None:
+    """Place a single node via raw Lua."""
+    mt.lua.run(f'minetest.set_node({{x={x}, y={y}, z={z}}}, {{name="{node}"}})')
 
 
-def clear_box(mt: miney.Minetest,
-              x1: int, y1: int, z1: int,
-              x2: int, y2: int, z2: int) -> None:
-    """Fill a bounding box with air."""
-    mt.lua.run(
-        f"minetest.bulk_set_node("
-        f"  minetest.find_nodes_in_area("
-        f"    {{x={x1},y={y1},z={z1}}}, {{x={x2},y={y2},z={z2}}}, "
-        f"    minetest.registered_nodes and (function() "
-        f"      local t={{}} for k in pairs(minetest.registered_nodes) do t[#t+1]=k end return t end)()"
-        f"    or {{'air'}}),"
-        f"  {{name='air'}})"
-    )
-
-
-def chat(mt: miney.Minetest, message: str) -> None:
-    """Broadcast a chat message from the server."""
-    mt.lua.run(f'minetest.chat_send_all("{message}")')
+def lua_chat(mt: miney.Luanti, message: str) -> None:
+    """Broadcast a chat message to all players."""
+    safe = message.replace('"', '\\"')
+    mt.lua.run(f'minetest.chat_send_all("{safe}")')
     print(f"  💬  {message}")
 
 
-def sleep(seconds: float, label: str = "") -> None:
-    label_str = f"  ⏳  {label}" if label else f"  ⏳  sleeping {seconds}s"
-    print(label_str)
+def pause(seconds: float, label: str = "") -> None:
+    msg = f"  ⏳  {label}" if label else f"  ⏳  {seconds}s pause"
+    print(msg)
     time.sleep(seconds)
 
 
-# ── Demo routines ─────────────────────────────────────────────────────────────
+# ── Demo acts ─────────────────────────────────────────────────────────────────
 
-def demo_greeting(mt: miney.Minetest, ox: int, oy: int, oz: int) -> None:
-    """Announce the demo and clear the stage."""
-    print("\n🎉  [1/6] Greeting + stage clear")
-    chat(mt, "=== Python Demo Starting! Watch closely... ===")
-    sleep(1)
-    chat(mt, "Clearing the stage...")
+def demo_greeting(mt: miney.Luanti, ox: int, oy: int, oz: int) -> None:
+    print("\n🎉  [1/5] Greeting + platform")
+    lua_chat(mt, "=== Python Demo Starting — watch the world! ===")
+    pause(1)
+    lua_chat(mt, "Laying the stage platform...")
 
-    # Wipe a 48×20×48 area above the origin so we have a blank canvas
-    for dy in range(0, 20):
-        for dx in range(-2, 46):
-            for dz in range(-2, 46):
-                mt.lua.run(
-                    f'minetest.set_node({{x={ox+dx},y={oy+dy},z={oz+dz}}}, {{name="air"}})'
-                )
+    # 44×44 wooden platform as our canvas
+    for dx in range(44):
+        for dz in range(44):
+            lua_place(mt, ox + dx, oy, oz + dz, PLANK)
+        if dx % 10 == 0:
+            lua_chat(mt, f"  Platform {int(dx/44*100)}% done...")
+        time.sleep(0.01)
 
-    # Lay a flat wooden platform as our stage floor
-    for dx in range(0, 44):
-        for dz in range(0, 44):
-            place(mt, ox + dx, oy, oz + dz, PLANK)
-
-    chat(mt, "Stage ready!")
-    sleep(1)
+    lua_chat(mt, "Stage ready — demos begin!")
+    pause(1)
 
 
-def demo_rainbow_road(mt: miney.Minetest, ox: int, oy: int, oz: int) -> None:
-    """Place a rainbow-striped road stretching away from spawn."""
-    print("\n🌈  [2/6] Rainbow Road")
-    chat(mt, "Demo 1: Rainbow Road!")
+def demo_rainbow_road(mt: miney.Luanti, ox: int, oy: int, oz: int) -> None:
+    print("\n🌈  [2/5] Rainbow Road")
+    lua_chat(mt, "Demo 1: Rainbow Road! 🌈")
 
     road_length = 40
-    stripe_width = len(RAINBOW)  # 8 blocks wide, one colour per lane
-
     for dz in range(road_length):
         for dx, colour in enumerate(RAINBOW):
-            place(mt, ox + dx, oy + 1, oz + dz, colour)
+            lua_place(mt, ox + dx, oy + 1, oz + dz, colour)
         if dz % 8 == 0:
             pct = int(dz / road_length * 100)
-            chat(mt, f"  Building rainbow road... {pct}%")
-        time.sleep(0.02)   # tiny delay so you can watch it grow in the client
+            lua_chat(mt, f"  Building road... {pct}%")
+        time.sleep(0.03)
 
-    chat(mt, "🌈 Rainbow Road complete!")
-    sleep(2)
+    lua_chat(mt, "🌈 Rainbow Road complete!")
+    pause(2)
 
 
-def demo_spiral_tower(mt: miney.Minetest, ox: int, oy: int, oz: int) -> None:
-    """Build a rising spiral of coloured glass blocks."""
-    print("\n🌀  [3/6] Spiral Tower")
-    chat(mt, "Demo 2: Spiral Glass Tower!")
+def demo_spiral_tower(mt: miney.Luanti, ox: int, oy: int, oz: int) -> None:
+    print("\n🌀  [3/5] Spiral Tower")
+    lua_chat(mt, "Demo 2: Glass Spiral Tower! 🌀")
 
-    cx = ox + 22   # centre of our stage
+    cx = ox + 22   # centre of the platform
     cz = oz + 22
-    radius = 5
-    total_steps = 120
+    radius  = 5
+    steps   = 100
 
-    for step in range(total_steps):
-        angle  = step * (2 * math.pi / 20)   # one full revolution every 20 steps
-        height = step // 4                    # rise every 4 steps
+    for step in range(steps):
+        angle  = step * (2 * math.pi / 18)   # full revolution every 18 steps
+        height = step // 3
         x = cx + int(radius * math.cos(angle))
         z = cz + int(radius * math.sin(angle))
         y = oy + 2 + height
         colour = GLASS_COLOURS[step % len(GLASS_COLOURS)]
-        place(mt, x, y, z, colour)
-        time.sleep(0.05)
+        lua_place(mt, x, y, z, colour)
+        time.sleep(0.06)
 
-    chat(mt, "🌀 Spiral tower done!")
-    sleep(2)
+    lua_chat(mt, "🌀 Tower complete!")
+    pause(2)
 
 
-def demo_checkerboard(mt: miney.Minetest, ox: int, oy: int, oz: int) -> None:
-    """Lay a 16×16 checkerboard of stone and gold block on the platform."""
-    print("\n♟️   [4/6] Checkerboard Floor")
-    chat(mt, "Demo 3: Checkerboard Floor!")
+def demo_checkerboard(mt: miney.Luanti, ox: int, oy: int, oz: int) -> None:
+    print("\n♟️   [4/5] Checkerboard Floor")
+    lua_chat(mt, "Demo 3: Checkerboard Floor! ♟️")
 
     size = 16
+    # Place checkerboard in the centre of the platform
     for dx in range(size):
         for dz in range(size):
             node = STONE if (dx + dz) % 2 == 0 else GOLD
-            place(mt, ox + dx + 14, oy + 1, oz + dz + 14, node)
-        time.sleep(0.03)
+            lua_place(mt, ox + dx + 14, oy + 1, oz + dz + 14, node)
+        time.sleep(0.04)
 
-    chat(mt, "♟️  Checkerboard laid!")
-    sleep(2)
+    lua_chat(mt, "♟️  Checkerboard done!")
+    pause(2)
 
 
-def demo_fireworks(mt: miney.Minetest, ox: int, oy: int, oz: int) -> None:
-    """Light a sequence of TNT blocks high in the air for a fireworks effect."""
-    print("\n💥  [5/6] Fireworks (TNT light show)")
-    chat(mt, "Demo 4: Fireworks! Stand back...")
-    sleep(1)
+def demo_fireworks(mt: miney.Luanti, ox: int, oy: int, oz: int) -> None:
+    print("\n💥  [5/5] Fireworks")
+    lua_chat(mt, "Demo 4: FIREWORKS! 💥 Stand back...")
+    pause(1)
 
-    blast_spots = [
-        (ox +  8, oy + 14, oz + 20),
-        (ox + 36, oy + 16, oz + 20),
-        (ox + 22, oy + 18, oz +  8),
-        (ox + 22, oy + 18, oz + 36),
-        (ox + 22, oy + 20, oz + 22),
+    # Place TNT high up and ignite it by removing and spawning the entity
+    blasts = [
+        (ox +  8, oy + 15, oz + 20),
+        (ox + 36, oy + 17, oz + 20),
+        (ox + 22, oy + 19, oz +  8),
+        (ox + 22, oy + 19, oz + 36),
+        (ox + 22, oy + 22, oz + 22),   # grand finale — centre
     ]
-
-    for bx, by, bz in blast_spots:
-        place(mt, bx, by, bz, TNT)
+    for i, (bx, by, bz) in enumerate(blasts):
+        lua_place(mt, bx, by, bz, TNT)
         time.sleep(0.1)
-        # Punch the TNT via Lua to ignite it
+        # Ignite: remove the node, drop the primed TNT entity
         mt.lua.run(
-            f'local pos = {{x={bx},y={by},z={bz}}}; '
-            f'minetest.set_node(pos, {{name="air"}}); '
-            f'minetest.add_entity(pos, "mcl_tnt:tnt")'
+            f"local p={{x={bx},y={by},z={bz}}}; "
+            f"minetest.set_node(p, {{name='air'}}); "
+            f"minetest.add_entity(p, 'mcl_tnt:tnt')"
         )
-        sleep(0.6, "igniting next charge…")
+        pause(0.8, f"charge {i+1}/{len(blasts)} ignited")
 
-    chat(mt, "💥 Boom! Fireworks done!")
-    sleep(2)
-
-
-def demo_countdown(mt: miney.Minetest, ox: int, oy: int, oz: int) -> None:
-    """Place floating signs counting 3 → 2 → 1 → GO in the air."""
-    print("\n🔢  [6/6] Countdown")
-    chat(mt, "Demo 5: Countdown!")
-
-    labels = ["3", "2", "1", "GO!"]
-    sign_node = "mcl_signs:wall_sign"
-
-    for i, label in enumerate(labels):
-        sx = ox + 20
-        sy = oy + 12
-        sz = oz + 10 + i * 3
-
-        # Place a sign-like block (we use gold as a stand-in since sign
-        # metadata requires more complex Lua; this is visually clear)
-        colour_map = {"3": GOLD, "2": "mcl_wool:orange", "1": "mcl_wool:red", "GO!": "mcl_wool:lime"}
-        place(mt, sx, sy, sz, colour_map[label])
-
-        chat(mt, f"  ⏱  {label}")
-        sleep(0.9)
-
-    chat(mt, "🚀  GO! Python controls the world!")
-    sleep(1)
+    lua_chat(mt, "💥 Fireworks done!")
+    pause(2)
 
 
-def demo_signoff(mt: miney.Minetest) -> None:
-    """Farewell message."""
+def demo_signoff(mt: miney.Luanti) -> None:
     print("\n👋  Sign-off")
-    chat(mt, "=== Demo Complete! The world is yours. ===")
-    chat(mt, "Built with Python + miney + Luanti + VoxeLibre 🐍🎮")
+    lua_chat(mt, "=== Demo Complete! The world is yours to explore. ===")
+    lua_chat(mt, "Powered by Python + miney + Luanti + VoxeLibre 🐍🎮")
+
+
+# ── Connection helper ─────────────────────────────────────────────────────────
+
+def connect(host: str, port: int, name: str, password: str) -> miney.Luanti:
+    """Connect to the server, retrying a few times if it's still booting."""
+    attempts = 5
+    for i in range(attempts):
+        try:
+            print(f"  Connecting (attempt {i+1}/{attempts})...")
+            mt = miney.Luanti(
+                server=host,
+                playername=name,
+                password=password,
+                port=port,
+                invisible=True,   # bot won't disturb the view
+            )
+            return mt
+        except Exception as e:
+            if i < attempts - 1:
+                print(f"  ⚠️   {e} — retrying in 5s...")
+                time.sleep(5)
+            else:
+                raise
+    raise RuntimeError("Could not connect after all retries")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Luanti VoxeLibre Python Demo")
-    p.add_argument("--host",     default="localhost", help="Server host (default: localhost)")
-    p.add_argument("--port",     default=30000, type=int, help="Server port (default: 30000)")
-    p.add_argument("--name",     default="pybot",     help="Bot player name (default: pybot)")
-    p.add_argument("--password", default="",          help="Bot password (default: empty)")
-    p.add_argument("--origin-x", default=0,   type=int, help="X origin for builds (default: 0)")
-    p.add_argument("--origin-y", default=5,   type=int, help="Y origin for builds (default: 5)")
-    p.add_argument("--origin-z", default=0,   type=int, help="Z origin for builds (default: 0)")
+    p.add_argument("--host",     default="127.0.0.1", help="Server host (default: 127.0.0.1)")
+    p.add_argument("--port",     default=30000, type=int)
+    p.add_argument("--name",     default="pybot")
+    p.add_argument("--password", default="")
+    p.add_argument("--origin-x", default=0,  type=int, dest="ox")
+    p.add_argument("--origin-y", default=5,  type=int, dest="oy")
+    p.add_argument("--origin-z", default=0,  type=int, dest="oz")
     return p.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    ox, oy, oz = args.origin_x, args.origin_y, args.origin_z
 
     print(f"""
 ╔══════════════════════════════════════════════╗
 ║   Luanti VoxeLibre — Python Demo             ║
 ╠══════════════════════════════════════════════╣
-║  Server : {args.host}:{args.port:<27}  ║
-║  Bot    : {args.name:<37}  ║
-║  Origin : ({ox}, {oy}, {oz})
+║  Server  : {args.host}:{args.port}
+║  Bot     : {args.name}
+║  Origin  : ({args.ox}, {args.oy}, {args.oz})
 ╚══════════════════════════════════════════════╝
-Open the Luanti client and connect to {args.host}:30000 to watch live!
+Open the Luanti client → Join → {args.host}:30000 → name "viewer"
 """)
 
-    # ── Connect ────────────────────────────────────────────────────────────────
-    print("🔌  Connecting to server…")
+    print("🔌  Connecting to Luanti server…")
     try:
-        mt = miney.Minetest(
-            server=args.host,
-            playername=args.name,
-            password=args.password,
-            port=args.port,
-        )
+        mt = connect(args.host, args.port, args.name, args.password)
     except Exception as e:
         print(f"\n❌  Could not connect: {e}")
-        print("    Is the Docker container running?  Try:  docker compose -f luanti-voxelibre/docker-compose.yml up -d")
+        print("    Is the Docker container running?")
+        print("    docker compose -f luanti-voxelibre/docker-compose.yml up -d")
         sys.exit(1)
 
     print("✅  Connected!\n")
-    sleep(1, "waiting for world to settle…")
+    pause(1, "letting world settle…")
 
-    # ── Run demos ──────────────────────────────────────────────────────────────
     try:
-        demo_greeting(mt, ox, oy, oz)
-        demo_rainbow_road(mt, ox, oy, oz)
-        demo_spiral_tower(mt, ox, oy, oz)
-        demo_checkerboard(mt, ox, oy, oz)
-        demo_fireworks(mt, ox, oy, oz)
-        demo_countdown(mt, ox, oy, oz)
+        demo_greeting(mt, args.ox, args.oy, args.oz)
+        demo_rainbow_road(mt, args.ox, args.oy, args.oz)
+        demo_spiral_tower(mt, args.ox, args.oy, args.oz)
+        demo_checkerboard(mt, args.ox, args.oy, args.oz)
+        demo_fireworks(mt, args.ox, args.oy, args.oz)
         demo_signoff(mt)
     except KeyboardInterrupt:
-        print("\n\n⛔  Demo interrupted by user.")
-        chat(mt, "Demo interrupted. Goodbye!")
+        print("\n\n⛔  Interrupted.")
+        lua_chat(mt, "Demo interrupted. Goodbye!")
     except Exception as e:
-        print(f"\n❌  Error during demo: {e}")
+        print(f"\n❌  Error: {e}")
         raise
     finally:
         print("\n✅  Demo script finished.")
