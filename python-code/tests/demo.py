@@ -243,33 +243,54 @@ def find_origin(mt: miney.Luanti, watch_player: str) -> tuple:
     ox, oy, oz = px - 4, py, pz + 5
     print(f"  📍  {watch_player} at ({px},{py},{pz}) → building from ({ox},{oy},{oz})")
 
-    # Vantage point: centre of the 44×44 platform, 55 blocks up.
-    # 55 blocks gives ~120° field of view over the whole platform.
-    vx = ox + 22
-    vy = oy + 55
-    vz = oz + 22
+    # ── Vantage geometry ──────────────────────────────────────────────────────
+    # Scene centre = platform centre (ox+22, oy+1, oz+22).
+    # Camera placed along the (1,1,1) diagonal: equal X, Y, Z offset from centre.
+    #
+    # Required distance along ray:
+    #   Platform half-diagonal ≈ 31 blocks; 72° FOV → need ray-distance ≥ 43 blocks.
+    #   Also need to see spiral tower (~33 blocks tall). Use D = 80 for margin.
+    #   d = D / √3 ≈ 46 → place camera 46 blocks out in each axis.
+    #
+    # Resulting angles:
+    #   pitch  = arctan(1/√2) ≈ 35.26°  (classic isometric tilt)
+    #   yaw    = -π/4  (facing northwest — towards the -X/-Z corner of the build)
+    SCENE_CX = ox + 22
+    SCENE_CY = oy + 1       # 1 block above the platform surface
+    SCENE_CZ = oz + 22
+
+    D = 46                  # offset along each axis
+    vx = SCENE_CX + D
+    vy = SCENE_CY + D
+    vz = SCENE_CZ + D
+
+    # Luanti angles:
+    #   set_look_vertical  0=horizontal, π/2=straight down (positive = tilt down)
+    #   set_look_horizontal 0=north(-Z), π/2=east(+X)  →  -π/4 = northwest
+    PITCH = 0.6155          # 35.26° in radians (arctan(1/√2))
+    YAW   = -0.7854         # -π/4 = facing -X/-Z (northwest, toward build centre)
 
     mt.lua.run(f'''
         local player = minetest.get_player_by_name("{watch_player}")
         if not player then return end
 
-        -- Teleport above the build zone
+        -- Teleport to the (1,1,1) isometric vantage point
         player:set_pos({{x={vx}, y={vy}, z={vz}}})
 
-        -- Zero gravity so they float without pressing K.
-        -- They can press K at any time to take full fly control.
+        -- Zero gravity so they float without pressing K first.
+        -- Press K at any time to take full fly control and move around.
         player:set_physics_override({{gravity=0, speed=1, jump=1}})
 
-        -- Aim straight down at the platform
-        player:set_look_vertical(math.pi / 2)
-        player:set_look_horizontal(0)
+        -- Classic isometric angle: 35° down, facing the build corner
+        player:set_look_vertical({PITCH})
+        player:set_look_horizontal({YAW})
 
         minetest.chat_send_player("{watch_player}",
             "=== Demo starting in 5 seconds ===")
         minetest.chat_send_player("{watch_player}",
-            "You are floating above the build zone — look down to see it appear!")
+            "Isometric view: 35deg down, (1,1,1) diagonal. Mouse to look around.")
         minetest.chat_send_player("{watch_player}",
-            "Controls: K=fly on/off  J=fast  H=noclip  Mouse=look around")
+            "K=fly  J=fast  H=noclip — move freely once the demo starts")
     ''')
     print(f"  🚁  {watch_player} teleported to ({vx},{vy},{vz}), gravity zeroed, aimed down")
 
