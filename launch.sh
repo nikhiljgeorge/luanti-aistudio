@@ -138,20 +138,34 @@ if [[ -z "$LUANTI_BIN" ]] || ! command -v ${LUANTI_BIN%% *} &>/dev/null 2>&1; th
     done
 fi
 
-# ── Apply Minecraft-matching keybindings to the client config ─────────────────
-# Detected automatically: snap install → ~/snap/luanti/common/.minetest/minetest.conf
-#                         apt/brew    → ~/.minetest/minetest.conf
-#                         flatpak     → ~/.var/app/net.minetest.Minetest/.minetest/minetest.conf
+# ── Keybinding helpers (applied only when client is NOT running) ───────────────
+# Critical: Luanti overwrites its conf on exit — if we write while it's running,
+# our changes are lost. We must write BEFORE starting the client, not during.
 apply_client_setting() {
     local key="$1" val="$2" conf="$3"
     [[ -z "$conf" ]] && return
-    if grep -q "^${key} " "$conf" 2>/dev/null; then
-        # Replace existing line
-        sed -i "s|^${key} .*|${key} = ${val}|" "$conf"
+    # Match "key = value" or "key=value" (Luanti uses the former)
+    if grep -qE "^${key}( |=)" "$conf" 2>/dev/null; then
+        sed -i "s|^${key}[ =].*|${key} = ${val}|" "$conf"
     else
-        # Append new line
         echo "${key} = ${val}" >> "$conf"
     fi
+}
+
+apply_minecraft_keybindings() {
+    local conf="$1"
+    mkdir -p "$(dirname "$conf")"
+    info "Applying Minecraft keybindings to client config…"
+    while IFS= read -r line; do
+        [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        local key="${line%%=*}"
+        local val="${line#*=}"
+        key="${key%"${key##*[![:space:]]}"}"   # rtrim
+        val="${val#"${val%%[![:space:]]*}"}"   # ltrim
+        apply_client_setting "$key" "$val" "$conf"
+    done < "$CLIENT_DIR/minecraft-keybindings.conf"
+    success "Keybindings set: E=inventory  C=zoom  F3=debug  F5=3rd-person  F2=screenshot"
 }
 
 # Detect client config path
@@ -166,25 +180,6 @@ if [[ -n "$LUANTI_BIN" ]]; then
     fi
 fi
 
-if [[ -n "$CLIENT_CONF" ]]; then
-    mkdir -p "$(dirname "$CLIENT_CONF")"
-    info "Applying Minecraft keybindings to client config…"
-    # Read overrides from the reference file in the repo
-    while IFS= read -r line; do
-        # Skip blank lines and comments
-        [[ "$line" =~ ^[[:space:]]*$ ]] && continue
-        [[ "$line" =~ ^[[:space:]]*# ]] && continue
-        key="${line%%=*}"
-        val="${line#*=}"
-        key="${key%"${key##*[![:space:]]}"}"   # rtrim key
-        val="${val#"${val%%[![:space:]]*}"}"   # ltrim val
-        apply_client_setting "$key" "$val" "$CLIENT_CONF"
-    done < "$CLIENT_DIR/minecraft-keybindings.conf"
-    success "Keybindings applied (E=inventory, C=zoom, F3=debug, F5=3rd-person, F2=screenshot)"
-else
-    warn "Could not detect client config path — keybindings not applied."
-fi
-
 if [[ -z "$LUANTI_BIN" ]]; then
     warn "Luanti client not found — skipping client launch."
     warn "Run  luanti-client/install.sh  to install it, then re-run launch.sh"
@@ -195,7 +190,12 @@ else
     if pgrep -x "$CLIENT_BINARY_NAME" &>/dev/null; then
         warn "Luanti client already running (skipping launch)"
         warn "Switch to the existing window to connect/watch"
+        warn "Keybindings NOT updated — close and reopen the client to pick up any changes"
     else
+        # Client is not running — safe to write keybindings before it starts
+        [[ -n "$CLIENT_CONF" ]] && apply_minecraft_keybindings "$CLIENT_CONF" || \
+            warn "Could not detect client config path — keybindings not applied."
+
         success "Found client: $LUANTI_BIN"
         $LUANTI_BIN \
             --address "$SERVER_HOST" \
