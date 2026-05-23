@@ -138,6 +138,53 @@ if [[ -z "$LUANTI_BIN" ]] || ! command -v ${LUANTI_BIN%% *} &>/dev/null 2>&1; th
     done
 fi
 
+# ── Apply Minecraft-matching keybindings to the client config ─────────────────
+# Detected automatically: snap install → ~/snap/luanti/common/.minetest/minetest.conf
+#                         apt/brew    → ~/.minetest/minetest.conf
+#                         flatpak     → ~/.var/app/net.minetest.Minetest/.minetest/minetest.conf
+apply_client_setting() {
+    local key="$1" val="$2" conf="$3"
+    [[ -z "$conf" ]] && return
+    if grep -q "^${key} " "$conf" 2>/dev/null; then
+        # Replace existing line
+        sed -i "s|^${key} .*|${key} = ${val}|" "$conf"
+    else
+        # Append new line
+        echo "${key} = ${val}" >> "$conf"
+    fi
+}
+
+# Detect client config path
+CLIENT_CONF=""
+if [[ -n "$LUANTI_BIN" ]]; then
+    if [[ "$LUANTI_BIN" == *snap* ]] || [[ -d "$HOME/snap/luanti" ]]; then
+        CLIENT_CONF="$HOME/snap/luanti/common/.minetest/minetest.conf"
+    elif [[ "$LUANTI_BIN" == *flatpak* ]]; then
+        CLIENT_CONF="$HOME/.var/app/net.minetest.Minetest/.minetest/minetest.conf"
+    else
+        CLIENT_CONF="$HOME/.minetest/minetest.conf"
+    fi
+fi
+
+if [[ -n "$CLIENT_CONF" ]]; then
+    mkdir -p "$(dirname "$CLIENT_CONF")"
+    info "Applying Minecraft keybindings to client config…"
+    # Read overrides from the reference file in the repo
+    while IFS= read -r line; do
+        # Skip blank lines and comments
+        [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        key="${line%%=*}"
+        val="${line#*=}"
+        key="${key%"${key##*[![:space:]]}"}"   # rtrim key
+        val="${val#"${val%%[![:space:]]*}"}"   # ltrim val
+        apply_client_setting "$key" "$val" "$CLIENT_CONF"
+    done < "$CLIENT_DIR/minecraft-keybindings.conf"
+    success "Keybindings applied (E=inventory, C=zoom, F3=debug, F5=3rd-person, F2=screenshot)"
+else
+    warn "Could not detect client config path — keybindings not applied."
+fi
+
 if [[ -z "$LUANTI_BIN" ]]; then
     warn "Luanti client not found — skipping client launch."
     warn "Run  luanti-client/install.sh  to install it, then re-run launch.sh"
