@@ -158,16 +158,32 @@ else
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STEP 3 — Python script
+# STEP 3 — Python (venv) + script
 # ─────────────────────────────────────────────────────────────────────────────
 info "Step 3/3 — Running Python script…"
 echo ""
 
-# Ensure miney is installed
-if ! python3 -c "import miney" 2>/dev/null; then
-    warn "miney not installed — installing now…"
-    python3 -m pip install --quiet miney
+VENV_DIR="$REPO_ROOT/.venv"
+REQUIREMENTS="$REPO_ROOT/python-code/requirements.txt"
+
+# ── Create venv if it doesn't exist ──────────────────────────────────────────
+if [[ ! -f "$VENV_DIR/bin/activate" ]]; then
+    info "Creating project venv at .venv/ …"
+    python3 -m venv "$VENV_DIR"
+    success "venv created."
 fi
+
+# ── Activate it ───────────────────────────────────────────────────────────────
+# shellcheck disable=SC1091
+source "$VENV_DIR/bin/activate"
+success "venv activated: $(python3 --version) at $(which python3)"
+
+# ── Sync dependencies from requirements.txt ───────────────────────────────────
+# --quiet suppresses noise; only prints if something actually changes
+info "Syncing dependencies from python-code/requirements.txt …"
+pip install --quiet --upgrade pip
+pip install --quiet -r "$REQUIREMENTS"
+success "Dependencies up to date."
 
 success "Starting: $PYTHON_SCRIPT"
 echo "────────────────────────────────────────────────"
