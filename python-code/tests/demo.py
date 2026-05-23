@@ -290,7 +290,7 @@ def find_origin(mt: miney.Luanti, watch_player: str) -> tuple:
     #
     # Resulting angles:
     #   pitch  = arctan(1/√2) ≈ 35.26°  (classic isometric tilt)
-    #   yaw    = -π/4  (facing northwest — towards the -X/-Z corner of the build)
+    #   yaw    = 3π/4  (facing northwest — camera is SE of build, looks NW toward it)
     SCENE_CX = ox + 22
     SCENE_CY = oy + 1       # 1 block above the platform surface
     SCENE_CZ = oz + 22
@@ -302,9 +302,14 @@ def find_origin(mt: miney.Luanti, watch_player: str) -> tuple:
 
     # Luanti angles:
     #   set_look_vertical  0=horizontal, π/2=straight down (positive = tilt down)
-    #   set_look_horizontal 0=north(-Z), π/2=east(+X)  →  -π/4 = northwest
-    PITCH = 0.6155          # 35.26° in radians (arctan(1/√2))
-    YAW   = -0.7854         # -π/4 = facing -X/-Z (northwest, toward build centre)
+    #   set_look_horizontal 0=south(+Z), increasing CCW from above
+    #     south=0, east=π/2, north=π, west=3π/2 (or -π/2)
+    #     northwest (toward build from camera) = 3π/4
+    #
+    # Camera is at (scene_cx+D, scene_cz+D) — the south-east corner of the build.
+    # Build centre is to the north-west → yaw = 3π/4.
+    PITCH = 0.6155          # 35.26° in radians (arctan(1/√2)) — isometric tilt down
+    YAW   = 2.3562          # 3π/4 = facing north-west, toward the build centre
 
     mt.lua.run(f'''
         local player = minetest.get_player_by_name("{watch_player}")
