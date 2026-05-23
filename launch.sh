@@ -143,18 +143,23 @@ if [[ -z "$LUANTI_BIN" ]]; then
     warn "Run  luanti-client/install.sh  to install it, then re-run launch.sh"
     warn "You can still watch by opening the client manually and connecting to $SERVER_HOST:$SERVER_PORT"
 else
-    success "Found client: $LUANTI_BIN"
-    # Launch client in background, auto-connecting to the server
-    # --address / --port auto-connects; user still sees the login screen
-    $LUANTI_BIN \
-        --address "$SERVER_HOST" \
-        --port "$SERVER_PORT" \
-        --name "viewer" \
-        &>/dev/null &
-    CLIENT_PID=$!
-    success "Client launched (PID $CLIENT_PID) — connect as 'viewer' with no password"
-    info "Giving the client 5s to open before starting the demo…"
-    sleep 5
+    # Check if the client is already running — match on the binary name
+    CLIENT_BINARY_NAME="$(basename "${LUANTI_BIN%% *}")"
+    if pgrep -x "$CLIENT_BINARY_NAME" &>/dev/null; then
+        warn "Luanti client already running (skipping launch)"
+        warn "Switch to the existing window to connect/watch"
+    else
+        success "Found client: $LUANTI_BIN"
+        $LUANTI_BIN \
+            --address "$SERVER_HOST" \
+            --port "$SERVER_PORT" \
+            --name "viewer" \
+            &>/dev/null &
+        CLIENT_PID=$!
+        success "Client launched (PID $CLIENT_PID) — Register as 'viewer' (no password)"
+        info "Giving the client 5s to open before starting the demo…"
+        sleep 5
+    fi
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
