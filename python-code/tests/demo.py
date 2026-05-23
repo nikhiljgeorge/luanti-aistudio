@@ -81,6 +81,56 @@ def pause(seconds: float, label: str = "") -> None:
     time.sleep(seconds)
 
 
+def lua_sound(
+    mt: miney.Luanti,
+    name: str,
+    pos: tuple = None,
+    player: str = None,
+    gain: float = 1.0,
+    pitch: float = 1.0,
+) -> None:
+    """
+    Play a one-shot sound via server-side Lua.
+
+    name   — filename without .ogg (must exist in a loaded mod's sounds/ folder)
+    pos    — (x, y, z) for positional audio; attenuates with distance
+    player — send privately to one player (use with pos=None for non-positional)
+    gain   — volume multiplier (1.0 = default)
+    pitch  — playback speed / pitch shift (1.0 = normal)
+    """
+    parts = [f"gain={gain}", f"pitch={pitch}"]
+    if pos:
+        parts.append(f"pos={{x={pos[0]},y={pos[1]},z={pos[2]}}}")
+    if player:
+        parts.append(f'to_player="{player}"')
+    mt.lua.run(f'minetest.sound_play("{name}", {{{", ".join(parts)}}})')
+
+
+def lua_music_start(mt: miney.Luanti, name: str, player: str, gain: float = 0.35) -> None:
+    """
+    Start looping background music sent privately to one player.
+    The server-side handle is stored in a Lua global so lua_music_stop() can find it.
+    """
+    print(f"  🎵  Starting music: {name}")
+    mt.lua.run(f'''
+        _demo_music_handle = minetest.sound_play(
+            "{name}",
+            {{to_player="{player}", loop=true, gain={gain}}}
+        )
+    ''')
+
+
+def lua_music_stop(mt: miney.Luanti) -> None:
+    """Stop the looping background track started by lua_music_start()."""
+    mt.lua.run('''
+        if _demo_music_handle then
+            minetest.sound_stop(_demo_music_handle)
+            _demo_music_handle = nil
+        end
+    ''')
+    print("  🔇  Music stopped.")
+
+
 # ── Demo acts ─────────────────────────────────────────────────────────────────
 
 def clear_build_area(mt: miney.Luanti, ox: int, oy: int, oz: int) -> None:
@@ -125,12 +175,15 @@ def demo_greeting(mt: miney.Luanti, ox: int, oy: int, oz: int) -> None:
     pause(1)
     lua_chat(mt, "Laying the stage platform...")
 
+    centre = (ox + 22, oy, oz + 22)
+
     # 44×44 wooden platform — placed row by row so you can watch it grow
     for dx in range(44):
         for dz in range(44):
             lua_place(mt, ox + dx, oy, oz + dz, PLANK)
         if dx % 11 == 0:
             lua_chat(mt, f"  Platform {int(dx/44*100)}% done...")
+            lua_sound(mt, "default_place_node", pos=centre, gain=0.6)
         time.sleep(0.05)   # 50 ms per row — visible sweep from above
 
     lua_chat(mt, "Stage ready — demos begin!")
@@ -148,6 +201,9 @@ def demo_rainbow_road(mt: miney.Luanti, ox: int, oy: int, oz: int) -> None:
         if dz % 8 == 0:
             pct = int(dz / road_length * 100)
             lua_chat(mt, f"  Building road... {pct}%")
+            # Slightly higher pitch each quarter to give a rising feeling
+            lua_sound(mt, "default_place_node", pos=(ox + 4, oy + 1, oz + dz),
+                      gain=0.5, pitch=0.9 + 0.1 * (dz // 8))
         time.sleep(0.08)   # slow enough to see each stripe appear
 
     lua_chat(mt, "🌈 Rainbow Road complete!")
@@ -171,6 +227,10 @@ def demo_spiral_tower(mt: miney.Luanti, ox: int, oy: int, oz: int) -> None:
         y = oy + 2 + height
         colour = GLASS_COLOURS[step % len(GLASS_COLOURS)]
         lua_place(mt, x, y, z, colour)
+        # Glass clink every half-revolution, pitch rising as tower grows
+        if step % 9 == 0:
+            lua_sound(mt, "default_place_node_hard", pos=(x, y, z),
+                      gain=0.5, pitch=0.8 + 0.4 * (step / steps))
         time.sleep(0.06)
 
     lua_chat(mt, "🌀 Tower complete!")
@@ -209,13 +269,16 @@ def demo_fireworks(mt: miney.Luanti, ox: int, oy: int, oz: int) -> None:
     for i, (bx, by, bz) in enumerate(blasts):
         lua_place(mt, bx, by, bz, TNT)
         time.sleep(0.1)
+        lua_sound(mt, "tnt_ignite", pos=(bx, by, bz), gain=1.0)
         # Ignite: remove the node, drop the primed TNT entity
         mt.lua.run(
             f"local p={{x={bx},y={by},z={bz}}}; "
             f"minetest.set_node(p, {{name='air'}}); "
             f"minetest.add_entity(p, 'mcl_tnt:tnt')"
         )
-        pause(0.8, f"charge {i+1}/{len(blasts)} ignited")
+        time.sleep(0.3)   # short fuse — boom before next charge
+        lua_sound(mt, "vl_fireworks_rocket", pos=(bx, by, bz), gain=1.2)
+        pause(0.5, f"charge {i+1}/{len(blasts)} ignited")
 
     lua_chat(mt, "💥 Fireworks done!")
     pause(2)
@@ -223,6 +286,7 @@ def demo_fireworks(mt: miney.Luanti, ox: int, oy: int, oz: int) -> None:
 
 def demo_signoff(mt: miney.Luanti) -> None:
     print("\n👋  Sign-off")
+    lua_sound(mt, "awards_got_generic", gain=1.0)   # achievement fanfare
     lua_chat(mt, "=== Demo Complete! The world is yours to explore. ===")
     lua_chat(mt, "Powered by Python + miney + Luanti + VoxeLibre 🐍🎮")
 
@@ -400,6 +464,11 @@ Open the Luanti client → Join → {args.host}:30000 → name "viewer"
     # Clear trees/terrain above the build zone before anything is placed
     clear_build_area(mt, ox, oy, oz)
 
+    # Start background music for the viewer (loops quietly throughout the demo)
+    watch_player = args.watch if not fixed_origin else None
+    if watch_player:
+        lua_music_start(mt, "shepherd-midnight", watch_player, gain=0.35)
+
     try:
         demo_greeting(mt, ox, oy, oz)
         demo_rainbow_road(mt, ox, oy, oz)
@@ -414,6 +483,7 @@ Open the Luanti client → Join → {args.host}:30000 → name "viewer"
         print(f"\n❌  Error: {e}")
         raise
     finally:
+        lua_music_stop(mt)
         print("\n✅  Demo script finished.")
 
 
