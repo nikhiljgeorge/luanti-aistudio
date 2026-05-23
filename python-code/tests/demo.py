@@ -89,13 +89,13 @@ def demo_greeting(mt: miney.Luanti, ox: int, oy: int, oz: int) -> None:
     pause(1)
     lua_chat(mt, "Laying the stage platform...")
 
-    # 44×44 wooden platform as our canvas
+    # 44×44 wooden platform — placed row by row so you can watch it grow
     for dx in range(44):
         for dz in range(44):
             lua_place(mt, ox + dx, oy, oz + dz, PLANK)
-        if dx % 10 == 0:
+        if dx % 11 == 0:
             lua_chat(mt, f"  Platform {int(dx/44*100)}% done...")
-        time.sleep(0.01)
+        time.sleep(0.05)   # 50 ms per row — visible sweep from above
 
     lua_chat(mt, "Stage ready — demos begin!")
     pause(1)
@@ -112,7 +112,7 @@ def demo_rainbow_road(mt: miney.Luanti, ox: int, oy: int, oz: int) -> None:
         if dz % 8 == 0:
             pct = int(dz / road_length * 100)
             lua_chat(mt, f"  Building road... {pct}%")
-        time.sleep(0.03)
+        time.sleep(0.08)   # slow enough to see each stripe appear
 
     lua_chat(mt, "🌈 Rainbow Road complete!")
     pause(2)
@@ -220,13 +220,9 @@ def connect(host: str, port: int, name: str, password: str) -> miney.Luanti:
 
 def find_origin(mt: miney.Luanti, watch_player: str) -> tuple:
     """
-    Work out where to build the demo.
-
-    Priority:
-      1. If --origin-x/y/z were explicitly passed, use those.
-      2. If `watch_player` is online, build 10 blocks in front of them
-         (along +Z) and teleport them to a good vantage point above it.
-      3. Fall back to (0, 5, 0).
+    Locate the viewer, pick a build origin near them, teleport them to a
+    bird's-eye vantage point, and give them 5 seconds to get oriented
+    before the first block is placed.
     """
     result = mt.lua.run(f'''
         local player = minetest.get_player_by_name("{watch_player}")
@@ -242,24 +238,48 @@ def find_origin(mt: miney.Luanti, watch_player: str) -> tuple:
         return 0, 5, 0
 
     px, py, pz = (int(v) for v in result.split(","))
-    # Build platform starting 5 blocks in front (+Z) of the player
-    ox, oy, oz = px - 4, py, pz + 5
-    print(f"  📍  {watch_player} is at ({px}, {py}, {pz}) — building from ({ox}, {oy}, {oz})")
 
-    # Teleport the viewer to a bird's-eye seat above the centre of the platform
-    # Centre of a 44×44 platform is ~22 blocks in, 20 blocks up
+    # Build platform 5 blocks in front of the player along +Z
+    ox, oy, oz = px - 4, py, pz + 5
+    print(f"  📍  {watch_player} at ({px},{py},{pz}) → building from ({ox},{oy},{oz})")
+
+    # Vantage point: centre of the 44×44 platform, 55 blocks up.
+    # 55 blocks gives ~120° field of view over the whole platform.
     vx = ox + 22
-    vy = oy + 22
+    vy = oy + 55
     vz = oz + 22
+
     mt.lua.run(f'''
         local player = minetest.get_player_by_name("{watch_player}")
-        if player then
-            player:set_pos({{x={vx}, y={vy}, z={vz}}})
-            minetest.chat_send_player("{watch_player}",
-                "🎬  Teleported to demo vantage point — press K to fly, look down!")
-        end
+        if not player then return end
+
+        -- Teleport above the build zone
+        player:set_pos({{x={vx}, y={vy}, z={vz}}})
+
+        -- Zero gravity so they float without pressing K.
+        -- They can press K at any time to take full fly control.
+        player:set_physics_override({{gravity=0, speed=1, jump=1}})
+
+        -- Aim straight down at the platform
+        player:set_look_vertical(math.pi / 2)
+        player:set_look_horizontal(0)
+
+        minetest.chat_send_player("{watch_player}",
+            "=== Demo starting in 5 seconds ===")
+        minetest.chat_send_player("{watch_player}",
+            "You are floating above the build zone — look down to see it appear!")
+        minetest.chat_send_player("{watch_player}",
+            "Controls: K=fly on/off  J=fast  H=noclip  Mouse=look around")
     ''')
-    print(f"  🚁  Teleported {watch_player} to vantage point ({vx}, {vy}, {vz})")
+    print(f"  🚁  {watch_player} teleported to ({vx},{vy},{vz}), gravity zeroed, aimed down")
+
+    # Countdown so the player can get their bearings before anything is built
+    for n in [5, 4, 3, 2, 1]:
+        mt.lua.run(f'minetest.chat_send_player("{watch_player}", "  {n}...")')
+        print(f"  ⏳  {n}…")
+        time.sleep(1)
+    mt.lua.run(f'minetest.chat_send_player("{watch_player}", "🚀 GO!")')
+
     return ox, oy, oz
 
 
