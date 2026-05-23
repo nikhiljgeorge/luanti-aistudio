@@ -218,20 +218,68 @@ def connect(host: str, port: int, name: str, password: str) -> miney.Luanti:
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
+def find_origin(mt: miney.Luanti, watch_player: str) -> tuple:
+    """
+    Work out where to build the demo.
+
+    Priority:
+      1. If --origin-x/y/z were explicitly passed, use those.
+      2. If `watch_player` is online, build 10 blocks in front of them
+         (along +Z) and teleport them to a good vantage point above it.
+      3. Fall back to (0, 5, 0).
+    """
+    result = mt.lua.run(f'''
+        local player = minetest.get_player_by_name("{watch_player}")
+        if player then
+            local pos = player:get_pos()
+            return math.floor(pos.x) .. "," .. math.floor(pos.y) .. "," .. math.floor(pos.z)
+        end
+        return "none"
+    ''')
+
+    if result == "none":
+        print(f"  ℹ️   '{watch_player}' not online — using default origin (0, 5, 0)")
+        return 0, 5, 0
+
+    px, py, pz = (int(v) for v in result.split(","))
+    # Build platform starting 5 blocks in front (+Z) of the player
+    ox, oy, oz = px - 4, py, pz + 5
+    print(f"  📍  {watch_player} is at ({px}, {py}, {pz}) — building from ({ox}, {oy}, {oz})")
+
+    # Teleport the viewer to a bird's-eye seat above the centre of the platform
+    # Centre of a 44×44 platform is ~22 blocks in, 20 blocks up
+    vx = ox + 22
+    vy = oy + 22
+    vz = oz + 22
+    mt.lua.run(f'''
+        local player = minetest.get_player_by_name("{watch_player}")
+        if player then
+            player:set_pos({{x={vx}, y={vy}, z={vz}}})
+            minetest.chat_send_player("{watch_player}",
+                "🎬  Teleported to demo vantage point — press K to fly, look down!")
+        end
+    ''')
+    print(f"  🚁  Teleported {watch_player} to vantage point ({vx}, {vy}, {vz})")
+    return ox, oy, oz
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Luanti VoxeLibre Python Demo")
-    p.add_argument("--host",     default="127.0.0.1", help="Server host (default: 127.0.0.1)")
-    p.add_argument("--port",     default=30000, type=int)
-    p.add_argument("--name",     default="pybot")
-    p.add_argument("--password", default="")
-    p.add_argument("--origin-x", default=0,  type=int, dest="ox")
-    p.add_argument("--origin-y", default=5,  type=int, dest="oy")
-    p.add_argument("--origin-z", default=0,  type=int, dest="oz")
+    p.add_argument("--host",         default="127.0.0.1", help="Server host (default: 127.0.0.1)")
+    p.add_argument("--port",         default=30000, type=int)
+    p.add_argument("--name",         default="pybot",   help="Bot player name")
+    p.add_argument("--password",     default="",        help="Bot password")
+    p.add_argument("--watch",        default="viewer",  help="Player to build near and teleport (default: viewer)")
+    p.add_argument("--origin-x",     default=None, type=int, dest="ox",
+                   help="Fixed X origin — overrides --watch position")
+    p.add_argument("--origin-y",     default=None, type=int, dest="oy")
+    p.add_argument("--origin-z",     default=None, type=int, dest="oz")
     return p.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    fixed_origin = all(v is not None for v in [args.ox, args.oy, args.oz])
 
     print(f"""
 ╔══════════════════════════════════════════════╗
@@ -239,7 +287,7 @@ def main() -> None:
 ╠══════════════════════════════════════════════╣
 ║  Server  : {args.host}:{args.port}
 ║  Bot     : {args.name}
-║  Origin  : ({args.ox}, {args.oy}, {args.oz})
+║  Watch   : {args.watch if not fixed_origin else "n/a (fixed origin)"}
 ╚══════════════════════════════════════════════╝
 Open the Luanti client → Join → {args.host}:30000 → name "viewer"
 """)
@@ -256,12 +304,19 @@ Open the Luanti client → Join → {args.host}:30000 → name "viewer"
     print("✅  Connected!\n")
     pause(1, "letting world settle…")
 
+    # ── Work out where to build ────────────────────────────────────────────────
+    if fixed_origin:
+        ox, oy, oz = args.ox, args.oy, args.oz
+        print(f"  📍  Using fixed origin ({ox}, {oy}, {oz})")
+    else:
+        ox, oy, oz = find_origin(mt, args.watch)
+
     try:
-        demo_greeting(mt, args.ox, args.oy, args.oz)
-        demo_rainbow_road(mt, args.ox, args.oy, args.oz)
-        demo_spiral_tower(mt, args.ox, args.oy, args.oz)
-        demo_checkerboard(mt, args.ox, args.oy, args.oz)
-        demo_fireworks(mt, args.ox, args.oy, args.oz)
+        demo_greeting(mt, ox, oy, oz)
+        demo_rainbow_road(mt, ox, oy, oz)
+        demo_spiral_tower(mt, ox, oy, oz)
+        demo_checkerboard(mt, ox, oy, oz)
+        demo_fireworks(mt, ox, oy, oz)
         demo_signoff(mt)
     except KeyboardInterrupt:
         print("\n\n⛔  Interrupted.")
