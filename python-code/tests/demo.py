@@ -83,6 +83,42 @@ def pause(seconds: float, label: str = "") -> None:
 
 # ── Demo acts ─────────────────────────────────────────────────────────────────
 
+def clear_build_area(mt: miney.Luanti, ox: int, oy: int, oz: int) -> None:
+    """
+    Replace every block above the build footprint with air before construction.
+
+    Clears a 52×52 column (44-block platform + 4-block margin each side) from
+    platform level (oy) up 55 blocks — enough to remove trees, leaves, branches,
+    tall grass, and anything else that could obscure the isometric view.
+
+    Done row-by-row (one Lua call per X slice) so each server round-trip is small
+    and the wipe is visibly fast (~2-3 seconds total).
+    """
+    print("\n🌲  Clearing build zone of trees and obstructions…")
+    lua_chat(mt, "Clearing the build zone…")
+
+    # Footprint: 44×44 platform + 4-block margin on each side = 52×52
+    x1, x2 = ox - 4, ox + 47
+    z1, z2 = oz - 4, oz + 47
+    y_floor = oy        # platform will be placed at oy — clear from here up
+    y_ceil  = oy + 55   # above spiral tower top (~oy+35) and any VoxeLibre tree
+
+    total = x2 - x1 + 1
+    for i, x in enumerate(range(x1, x2 + 1)):
+        mt.lua.run(f'''
+            for z = {z1}, {z2} do
+                for y = {y_floor}, {y_ceil} do
+                    minetest.set_node({{x={x}, y=y, z=z}}, {{name="air"}})
+                end
+            end
+        ''')
+        if i % 13 == 0:   # ~4 progress prints
+            print(f"  🌲  {int(i / total * 100)}%…")
+
+    lua_chat(mt, "Build zone clear!")
+    print("  ✅  Area cleared.")
+
+
 def demo_greeting(mt: miney.Luanti, ox: int, oy: int, oz: int) -> None:
     print("\n🎉  [1/5] Greeting + platform")
     lua_chat(mt, "=== Python Demo Starting — watch the world! ===")
@@ -355,6 +391,9 @@ Open the Luanti client → Join → {args.host}:30000 → name "viewer"
     # Set time to noon so the build is always in full daylight
     mt.lua.run("minetest.set_timeofday(0.5)")
     print("  ☀️   Time set to noon")
+
+    # Clear trees/terrain above the build zone before anything is placed
+    clear_build_area(mt, ox, oy, oz)
 
     try:
         demo_greeting(mt, ox, oy, oz)
