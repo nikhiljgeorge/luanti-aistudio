@@ -352,6 +352,10 @@ Open the Luanti client → Join → {args.host}:30000 → name "viewer"
     else:
         ox, oy, oz = find_origin(mt, args.watch)
 
+    # Set time to noon so the build is always in full daylight
+    mt.lua.run("minetest.set_timeofday(0.5)")
+    print("  ☀️   Time set to noon")
+
     try:
         demo_greeting(mt, ox, oy, oz)
         demo_rainbow_road(mt, ox, oy, oz)
